@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from supabase import create_client, Client
 
 st.set_page_config(page_title="Gerenciador de Estudos", page_icon="📚", layout="wide")
@@ -71,6 +71,46 @@ elif opcao == "Histórico & Desempenho":
             st.info("Nenhuma sessão registrada ainda no banco de dados. Vá na aba 'Registrar Estudo' para começar!")
         else:
             df = pd.DataFrame(historico_dados)
+            df['created_at_dt'] = pd.to_datetime(df['created_at'])
+            
+            hoje = datetime.now()
+            inicio_hoje = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
+            uma_semana_atras = hoje - timedelta(days=7)
+            um_mes_atras = hoje - timedelta(days=30)
+            
+            df_dia = df[df['created_at_dt'] >= inicio_hoje]
+            df_semana = df[df['created_at_dt'] >= uma_semana_atras]
+            df_mes = df[df['created_at_dt'] >= um_mes_atras]
+            
+            q_dia = df_dia["questoes"].sum()
+            a_dia = df_dia["acertos"].sum()
+            t_dia = df_dia["tempo_min"].sum()
+            taxa_dia = (a_dia / q_dia * 100) if q_dia > 0 else 0
+            
+            q_sem = df_semana["questoes"].sum()
+            a_sem = df_semana["acertos"].sum()
+            t_sem = df_semana["tempo_min"].sum()
+            taxa_semana = (a_sem / q_sem * 100) if q_sem > 0 else 0
+            
+            q_mes = df_mes["questoes"].sum()
+            a_mes = df_mes["acertos"].sum()
+            t_mes = df_mes["tempo_min"].sum()
+            taxa_mes = (a_mes / q_mes * 100) if q_mes > 0 else 0
+            
+            q_geral = df["questoes"].sum()
+            a_geral = df["acertos"].sum()
+            t_geral = df["tempo_min"].sum()
+            taxa_geral = (a_geral / q_geral * 100) if q_geral > 0 else 0
+            
+            st.subheader("📅 Desempenho por Período")
+            c1, c2, c3, c4 = st.columns(4)
+            
+            c1.metric("Hoje", f"{taxa_dia:.1f}%", f"{q_dia} quest. | {t_dia} min")
+            c2.metric("Últimos 7 dias", f"{taxa_semana:.1f}%", f"{q_sem} quest. | {t_sem} min")
+            c3.metric("Últimos 30 dias", f"{taxa_mes:.1f}%", f"{q_mes} quest. | {t_mes} min")
+            c4.metric("Total Acumulado", f"{taxa_geral:.1f}%", f"{q_geral} quest. | {t_geral} min")
+            
+            st.write("---")
             
             df_exibicao = df.rename(columns={
                 "created_at": "Data/Hora",
@@ -81,16 +121,6 @@ elif opcao == "Histórico & Desempenho":
                 "acertos": "Acertos",
                 "aproveitamento": "Aproveitamento (%)"
             })
-            
-            total_tempo = df["tempo_min"].sum()
-            total_questoes = df["questoes"].sum()
-            total_acertos = df["acertos"].sum()
-            taxa_geral = (total_acertos / total_questoes * 100) if total_questoes > 0 else 0
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Tempo Total Estudado", f"{total_tempo} min ({round(total_tempo/60, 1)}h)")
-            c2.metric("Total de Questões", f"{total_questoes}")
-            c3.metric("Taxa Geral de Acertos", f"{taxa_geral:.1f}%")
             
             st.subheader("📋 Tabela Completa de Sessões")
             colunas_visiveis = ["Data/Hora", "Disciplina", "Assunto", "Tempo (min)", "Questões", "Acertos", "Aproveitamento (%)"]
