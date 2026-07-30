@@ -71,12 +71,12 @@ elif opcao == "Histórico & Desempenho":
             st.info("Nenhuma sessão registrada ainda no banco de dados. Vá na aba 'Registrar Estudo' para começar!")
         else:
             df = pd.DataFrame(historico_dados)
-            df['created_at_dt'] = pd.to_datetime(df['created_at'])
+            df['created_at_dt'] = pd.to_datetime(df['created_at'], utc=True)
             
-            hoje = datetime.now()
-            inicio_hoje = hoje.replace(hour=0, minute=0, second=0, microsecond=0)
-            uma_semana_atras = hoje - timedelta(days=7)
-            um_mes_atras = hoje - timedelta(days=30)
+            hoje = pd.Timestamp.now(tz='UTC')
+            inicio_hoje = hoje.floor('D')
+            uma_semana_atras = hoje - pd.Timedelta(days=7)
+            um_mes_atras = hoje - pd.Timedelta(days=30)
             
             df_dia = df[df['created_at_dt'] >= inicio_hoje]
             df_semana = df[df['created_at_dt'] >= uma_semana_atras]
