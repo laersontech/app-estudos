@@ -2,11 +2,16 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 from datetime import datetime
+from supabase import create_client, Client
 
 st.set_page_config(page_title="Gerenciador de Estudos", page_icon="📚", layout="wide")
 
-if "historico" not in st.session_state:
-    st.session_state.historico = []
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    st.error("Erro ao conectar com o Supabase. Verifique se configurou o Secrets no Streamlit Cloud.")
 
 st.title("📚 Meu Painel de Estudos Personalizado")
 
@@ -33,18 +38,20 @@ if opcao == "Registrar Estudo":
             else:
                 taxa = (questoes_acertos / questoes_total * 100) if questoes_total > 0 else 0
                 
-                nova_sessao = {
-                    "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Disciplina": materia.strip(),
-                    "Assunto": assunto.strip() if assunto.strip() else "Geral",
-                    "Tempo (min)": tempo,
-                    "Questões": questoes_total,
-                    "Acertos": questoes_acertos,
-                    "Aproveitamento (%)": round(taxa, 1)
+                dados_nova_sessao = {
+                    "disciplina": materia.strip(),
+                    "assunto": assunto.strip() if assunto.strip() else "Geral",
+                    "tempo_min": tempo,
+                    "questoes": questoes_total,
+                    "acertos": questoes_acertos,
+                    "aproveitamento": round(taxa, 1)
                 }
                 
-                st.session_state.historico.append(nova_sessao)
-                st.success(f"Sessão de '{materia}' ({assunto}) salva! Taxa de acerto: {taxa:.1f}%")
+                try:
+                    supabase.table("historico_estudos").insert(dados_nova_sessao).execute()
+                    st.success(f"Sessão de '{materia}' ({assunto}) salva no banco de dados! Taxa de acerto: {taxa:.1f}%")
+                except Exception as e:
+                    st.error(f"Erro ao salvar no banco de dados: {e}")
 
     with col2:
         st.subheader("💡 Resumo da Sessão Atual")
@@ -56,23 +63,41 @@ if opcao == "Registrar Estudo":
 elif opcao == "Histórico & Desempenho":
     st.header("📊 Histórico e Estatísticas de Estudo")
     
-    if len(st.session_state.historico) == 0:
-        st.info("Nenhuma sessão registrada ainda. Vá na aba 'Registrar Estudo' para começar!")
-    else:
-        df = pd.DataFrame(st.session_state.historico)
+    try:
+        resposta = supabase.table("historico_estudos").select("*").order("created_at", desc=True).execute()
+        historico_dados = resposta.data
         
-        total_tempo = df["Tempo (min)"].sum()
-        total_questoes = df["Questões"].sum()
-        total_acertos = df["Acertos"].sum()
-        taxa_geral = (total_acertos / total_questoes * 100) if total_questoes > 0 else 0
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Tempo Total Estudado", f"{total_tempo} min ({round(total_tempo/60, 1)}h)")
-        c2.metric("Total de Questões", f"{total_questoes}")
-        c3.metric("Taxa Geral de Acertos", f"{taxa_geral:.1f}%")
-        
-        st.subheader("📋 Tabela Completa de Sessões")
-        st.dataframe(df, use_container_width=True)
+        if not historico_dados:
+            st.info("Nenhuma sessão registrada ainda no banco de dados. Vá na aba 'Registrar Estudo' para começar!")
+        else:
+            df = pd.DataFrame(historico_dados)
+            
+            df_exibicao = df.rename(columns={
+                "created_at": "Data/Hora",
+                "disciplina": "Disciplina",
+                "assunto": "Assunto",
+                "tempo_min": "Tempo (min)",
+                "questoes": "Questões",
+                "acertos": "Acertos",
+                "aproveitamento": "Aproveitamento (%)"
+            })
+            
+            total_tempo = df["tempo_min"].sum()
+            total_questoes = df["questoes"].sum()
+            total_acertos = df["acertos"].sum()
+            taxa_geral = (total_acertos / total_questoes * 100) if total_questoes > 0 else 0
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Tempo Total Estudado", f"{total_tempo} min ({round(total_tempo/60, 1)}h)")
+            c2.metric("Total de Questões", f"{total_questoes}")
+            c3.metric("Taxa Geral de Acertos", f"{taxa_geral:.1f}%")
+            
+            st.subheader("📋 Tabela Completa de Sessões")
+            colunas_visiveis = ["Data/Hora", "Disciplina", "Assunto", "Tempo (min)", "Questões", "Acertos", "Aproveitamento (%)"]
+            st.dataframe(df_exibicao[colunas_visiveis], use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Erro ao carregar o histórico: {e}")
 
 elif opcao == "Assistente de IA":
     st.header("🤖 Tirar Dúvidas com IA")
